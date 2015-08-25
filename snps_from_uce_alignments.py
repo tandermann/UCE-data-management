@@ -10,8 +10,10 @@ import glob
 import shutil
 import random
 import argparse
+import fileinput
 from cogent import LoadSeqs, DNA
-
+from Bio import AlignIO
+from Bio.Alphabet import IUPAC, Gapped
 
 # Complete path function
 class CompletePath(argparse.Action):
@@ -66,6 +68,7 @@ taxa_list = name_file.readlines()
 taxa_names = []
 for element in taxa_list:
 	taxa_names.append(element.replace("\n", ""))
+
 print "\n\n"
 print " ____________________________________________________"
 print "|Launching SNP extraction script...                  |"
@@ -76,12 +79,10 @@ print "|____________________________________________________|"
 if not args.phased:
 	print "\n\nScript is treating data as unphased alignment (add flag --phased to command if your data is phased)\n\n"
 else:
-	delimiter = raw_input("\n\n**************************************************\nUSER INPUT REQUIRED\n**************************************************\n\nYou indicated in your command that the alignment conatins phased data, i.e. multiple alleles per sample.\nWhat is the delimiter that separates the different alleles from the sample name in the alignment?\nExample: If your alignment contains two alleles for sample1 which are named sample1_allele1 and sample1_allele2, the delimiter would be _\n\nPlease enter your delimiter: ")
+	delimiter = raw_input("\n\n**************************************************\nUSER INPUT REQUIRED\n**************************************************\n\nYou indicated in your command that the alignment contains phased data, i.e. multiple alleles per sample.\nWhat is the delimiter that separates the different alleles from the sample name in the alignment?\nExample: If your alignment contains two alleles for sample1 which are named sample1_allele1 and sample1_allele2, the delimiter would be _\n\nPlease enter your delimiter: ")
 
 #_______________________________________________________________________________
 #%%% Functions %%%
-
-
 def find_names(sequence_names):
 	names = []
 	for element in sequence_names:
@@ -196,10 +197,21 @@ for key, value in final_dict.items():
 	final_snp_alignment[key] = "".join(value)
 
 # Create the output file in output directory
-output_file = os.path.join(out_dir,'snp.fasta')
-
+output_file_fasta = os.path.join(out_dir,'snp.fasta')
 #print the snp dictionary into a fasta-file
-with open(output_file, "wb") as f:
+with open(output_file_fasta, "wb") as f:
 	for k, v in final_snp_alignment.items():
 		f.write(">" + k+ "\n")
 		f.write(v+ "\n")
+
+# Create output file for SNAPP
+output_file_nexus = os.path.join(out_dir,'snp.nexus')
+aln = AlignIO.read(open(output_file_fasta), "fasta", alphabet=Gapped(IUPAC.ambiguous_dna))
+with open(output_file_nexus, "wb") as n:
+	n.write(aln.format("nexus"))
+if not args.phased:
+	for line in fileinput.input(output_file_nexus, inplace = 1):
+		print line.replace("format datatype=dna missing=? gap=-;", "format datatype=binary symbols=01;").rstrip()
+else:
+	for line in fileinput.input(output_file_nexus, inplace = 1):
+		print line.replace("format datatype=dna missing=? gap=-;", "format datatype=integerdata symbols=\"012\";").rstrip()
