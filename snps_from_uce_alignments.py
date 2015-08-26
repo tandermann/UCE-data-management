@@ -344,7 +344,7 @@ with open(output_file_nexus, "wb") as n:
 	n.write(aln.format("nexus"))
 if not args.phased:
 	for line in fileinput.input(output_file_nexus, inplace = 1):
-		print line.replace("format datatype=dna missing=? gap=-;", "format datatype=binary symbols=01;").rstrip()
+		print line.replace("format datatype=dna missing=? gap=-;", "format datatype=binary symbols=01 missing=?;").rstrip()
 else:
 	for line in fileinput.input(output_file_nexus, inplace = 1):
-		print line.replace("format datatype=dna missing=? gap=-;", "format datatype=integerdata symbols=\"012\";").rstrip()
+		print line.replace("format datatype=dna missing=? gap=-;", "format datatype=integerdata symbols=\"012\" missing=?;").rstrip()
