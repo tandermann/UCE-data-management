@@ -21,7 +21,7 @@ class CompletePath(argparse.Action):
     """give the full path of an input file/folder"""
     def __call__(self, parser, namespace, values, option_string=None):
         setattr(namespace, self.dest, os.path.abspath(os.path.expanduser(values)))
-		
+
 # Get arguments
 def get_args():
 	parser = argparse.ArgumentParser(
@@ -37,8 +37,9 @@ def get_args():
 	)
 	parser.add_argument(
 		'--config',
+        required=True,
 		action=CompletePath,
-		help='A configuration file containing all taxa names to be used for SNP extraction'
+		help='A configuration file containing all sequence IDs that you want to extract SNPs for (one sequence ID per line)'
 	)
 	parser.add_argument(
 		'--phased',
@@ -108,15 +109,15 @@ def variable_positions(alignment):
 			var_col.append(x)
 	return var_col
 
-	
+
 def variable_positions_incl_missing(alignment):
 	var_col = []
 	for x in range(len(alignment)):
 		if alignment[x].filtered(lambda x: len(set(x)) == 3 and ("n" in x or "N" in x) and "-" not in x):
 			var_col.append(x)
-	return var_col	
+	return var_col
 
-	
+
 def snps_include_missing():
 	if len(just_variable_aln)>0:
 		just_variable_aln_1 = just_variable_aln # if the above criterium is OK, nothing below happens
@@ -125,12 +126,12 @@ def snps_include_missing():
 		print "two alleles and missing", len(just_variable_aln_1)
 	else:
 		return None  #if the gene contains no snps or only snps in combination with "-", nothing will be extracted
-	# select one random column ID (position number) 
+	# select one random column ID (position number)
 	snp = random.sample(range(len(just_variable_aln_1)), 1)
 	print "sampling position",snp
 	# creates alignment just with one randomly selected SNP
 	S = just_variable_aln_1[snp]
-	
+
 
 def unphased_snps(list_var):
 	if len(list_var)>0:
@@ -141,7 +142,7 @@ def unphased_snps(list_var):
 	#chooses randomly one snp position and saves position-coordinate
 	snp = random.sample(list_positive, 1)[0]
 	print "sampling position", snp
-	
+
 	#creates an alignment with only the extracted position
 	temp_snp_align = edited_alignment[snp]
 	#creates dictionary from the extracted snp position
@@ -158,9 +159,9 @@ def unphased_snps(list_var):
 				snp_dict[name_seq] = "0"
 			else:
 				snp_dict[name_seq] = "1"
-	return snp_dict	
-	
-	
+	return snp_dict
+
+
 def phased_snps(list_var):
 	if len(list_var)>0:
 		list_positive = list_var
@@ -192,9 +193,9 @@ def phased_snps(list_var):
 				snp_dict[name_seq] = "2"
 			elif nucleotide[0] != nucleotide[1]:
 				snp_dict[name_seq] = "1"
-	return snp_dict	
-	
-	
+	return snp_dict
+
+
 def unphased_snps_missing(list_var):
 	if len(list_var)>0:
 		list_positive = list_var
@@ -207,7 +208,7 @@ def unphased_snps_missing(list_var):
 	#chooses randomly one snp position and saves position-coordinate
 	snp = random.sample(list_positive, 1)[0]
 	print "sampling position", snp
-	
+
 	#creates an alignment with only the extracted position
 	temp_snp_align = edited_alignment[snp]
 	#creates dictionary from the extracted snp position
@@ -226,9 +227,9 @@ def unphased_snps_missing(list_var):
 				snp_dict[name_seq] = "1"
 			else:
 				snp_dict[name_seq] = "?"
-	return snp_dict	
-	
-	
+	return snp_dict
+
+
 def phased_snps_missing(list_var):
 	if len(list_var)>0:
 		list_positive = list_var
@@ -267,7 +268,7 @@ def phased_snps_missing(list_var):
 				snp_dict[name_seq] = "?"
 	return snp_dict
 
-	
+
 #_____________________________________________________________________________________
 #%%% Workflow %%%
 #get all fasta files in working directory
