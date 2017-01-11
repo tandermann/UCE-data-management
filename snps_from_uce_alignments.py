@@ -54,6 +54,18 @@ def get_args():
 		help='Use flag if you want to include missing data into the SNP alignment for a higher SNP yield'
 	)
 	parser.add_argument(
+		'--base_export',
+		action='store_true',
+		default=False,
+		help='If you want to extract all variable positions as bases (rather than binary SNPs) from the alignments'
+	)
+	parser.add_argument(
+		'--delimiter',
+		type=str,
+		default='_',		
+		help='What is the delimiter that separates the different alleles from the sample name in the alignment? Example: If your alignment contains two alleles for sample1 which are named sample1_allele1 and sample1_allele2, the delimiter would be _'
+	)
+	parser.add_argument(
 		'--output',
 		required=True,
 		action=CompletePath,
@@ -84,10 +96,12 @@ print "|                                                    |"
 print "|Written by Tobias Hofmann, inspired by Yann Bertrand|"
 print "|Version 1.1, August 2015                            |"
 print "|____________________________________________________|"
+
 if not args.phased:
 	print "\n\nScript is treating data as unphased alignment (add flag --phased to command if your data is phased)\n\n"
 else:
-	delimiter = raw_input("\n\n**************************************************\nUSER INPUT REQUIRED\n**************************************************\n\nYou indicated in your command that the alignment contains phased data, i.e. multiple alleles per sample.\nWhat is the delimiter that separates the different alleles from the sample name in the alignment?\nExample: If your alignment contains two alleles for sample1 which are named sample1_allele1 and sample1_allele2, the delimiter would be _\n\nPlease enter your delimiter: ")
+	delimiter = args.delimiter 
+
 if not args.missing:
 	print "\nSequences with missing data are not considered during SNP extraction (add flag --missing to command for higher SNP yield, including missing data)\n\n"
 else:
@@ -105,16 +119,28 @@ def find_names(sequence_names):
 def variable_positions(alignment):
 	var_col = []
 	for x in range(len(alignment)):
-		if alignment[x].filtered(lambda x: len(set(x)) == 2 and "n" not in x and "N" not in x and "-" not in x):
-			var_col.append(x)
+		if not args.base_export:
+			if alignment[x].filtered(lambda x: len(set(x)) == 2 and "n" not in x and "N" not in x and "-" not in x):
+				var_col.append(x)
+		else:
+			if alignment[x].filtered(lambda x: len(set(x)) > 1 and "n" not in x and "N" not in x and "-" not in x):
+				var_col.append(x)
 	return var_col
 
 
 def variable_positions_incl_missing(alignment):
 	var_col = []
 	for x in range(len(alignment)):
-		if alignment[x].filtered(lambda x: len(set(x)) == 3 and ("n" in x or "N" in x) and "-" not in x):
-			var_col.append(x)
+		if not args.base_export:
+			if alignment[x].filtered(lambda x: len(set(x)) == 2 and "n" not in x and "N" not in x and "-" not in x):
+				var_col.append(x)
+			elif alignment[x].filtered(lambda x: len(set(x)) == 3 and ("n" in x or "N" in x) and "-" not in x):
+				var_col.append(x)
+		else:
+			if alignment[x].filtered(lambda x: len(set(x)) > 1 and "n" not in x and "N" not in x and "-" not in x):
+				var_col.append(x)
+			elif alignment[x].filtered(lambda x: len(set(x)) > 2 and ("n" in x or "N" in x) and "-" not in x):
+				var_col.append(x)
 	return var_col
 
 
@@ -139,26 +165,36 @@ def unphased_snps(list_var):
 	else:
 		print("no snp extraction performed due too a lack of polymorphic sites")
 		return None
-	#chooses randomly one snp position and saves position-coordinate
-	snp = random.sample(list_positive, 1)[0]
-	print "sampling position", snp
 
-	#creates an alignment with only the extracted position
-	temp_snp_align = edited_alignment[snp]
+	if not args.base_export:	
+		#chooses randomly one snp position and saves position-coordinate
+		snp = random.sample(list_positive, 1)[0]
+		print "sampling position", snp
+		#creates an alignment with only the extracted position
+		temp_snp_align = edited_alignment[snp]
+	else:
+		snp_list = list_positive
+		temp_snp_align = edited_alignment[snp_list]	
+
 	#creates dictionary from the extracted snp position
 	seq_dict = temp_snp_align.todict()
+
 	#creates a set from the dictionary, with ordered characters (in order to replace them properly)
 	set_values = list(set(seq_dict.values()))
-	#code the base-letters into 0 or 1
-	if "A" or "C" or "T" or "G" or "a" or "c" or "t" or "g" in set_values:
-		zero = set_values[0]
-		one = set_values[1]
-		snp_dict = {}
-		for name_seq, nucleotide in seq_dict.items():
-			if nucleotide == zero:
-				snp_dict[name_seq] = "0"
-			else:
-				snp_dict[name_seq] = "1"
+
+	if not args.base_export:	
+		#code the base-letters into 0 or 1
+		if "A" or "C" or "T" or "G" or "a" or "c" or "t" or "g" in set_values:
+			zero = set_values[0]
+			one = set_values[1]
+			snp_dict = {}
+			for name_seq, nucleotide in seq_dict.items():
+				if nucleotide == zero:
+					snp_dict[name_seq] = "0"
+				else:
+					snp_dict[name_seq] = "1"
+	else:
+		snp_dict = seq_dict.copy()	
 	return snp_dict
 
 
@@ -168,31 +204,47 @@ def phased_snps(list_var):
 	else:
 		print("no SNP extraction performed due too a lack of polymorphic sites")
 		return None
-	#chooses randomly one snp position and saves position-coordinate
-	snp = random.sample(list_positive, 1)[0]
-	print "sampling position", snp
-	#creates an alignment with only the extracted position
-	temp_snp_align = edited_alignment[snp]
+	
+	
+	if not args.base_export:
+		#chooses randomly one snp position and saves position-coordinate
+		snp = random.sample(list_positive, 1)[0]
+		print "sampling position", snp
+		#creates an alignment with only the extracted position
+		temp_snp_align = edited_alignment[snp]
+	else:
+		snp_list = list_positive
+		temp_snp_align = edited_alignment[snp_list]
+
 	#creates dictionary from the extracted snp position
 	seq_dict = temp_snp_align.todict()
-	#finds elements in the dictionary that belong to the same sample (in case of multiple alleles)
-	clean_names = sorted(find_names(taxa_names))
-	no_duplicates = list(set(clean_names))
-	new_dict = {taxon : [value for key, value in seq_dict.items() if key.startswith(taxon)] for taxon in no_duplicates}
-	#returns which two bases are present in the dictionary (ordered, to replace them properly)
+	
+	if not args.base_export:
+		#finds elements in the dictionary that belong to the same sample (in case of multiple alleles)
+		clean_names = sorted(find_names(taxa_names))
+		no_duplicates = list(set(clean_names))
+		new_dict = {taxon : [value for key, value in seq_dict.items() if key.startswith(taxon)] for taxon in no_duplicates}
+	else:
+		new_dict = seq_dict.copy()
+
+	#returns which bases are present in the dictionary (ordered, to replace them properly)
 	set_values = list(set(seq_dict.values()))
-	# Code the base-letters into 0, 1 or 2
-	if "A" or "C" or "T" or "G" or "a" or "c" or "t" or "g" in set_values:
-		zero = set_values[0]
-		two = set_values[1]
-		snp_dict = {}
-		for name_seq, nucleotide in new_dict.items():
-			if nucleotide[0] == nucleotide[1] == zero:
-				snp_dict[name_seq] = "0"
-			elif nucleotide[0] == nucleotide[1] == two:
-				snp_dict[name_seq] = "2"
-			elif nucleotide[0] != nucleotide[1]:
-				snp_dict[name_seq] = "1"
+
+	if not args.base_export:
+		# Code the base-letters into 0, 1 or 2
+		if "A" or "C" or "T" or "G" or "a" or "c" or "t" or "g" in set_values:
+			zero = set_values[0]
+			two = set_values[1]
+			snp_dict = {}
+			for name_seq, nucleotide in new_dict.items():
+				if nucleotide[0] == nucleotide[1] == zero:
+					snp_dict[name_seq] = "0"
+				elif nucleotide[0] == nucleotide[1] == two:
+					snp_dict[name_seq] = "2"
+				elif nucleotide[0] != nucleotide[1]:
+					snp_dict[name_seq] = "1"
+	else:
+		snp_dict = new_dict.copy()
 	return snp_dict
 
 
@@ -205,28 +257,38 @@ def unphased_snps_missing(list_var):
 	else:
 		print("no snp extraction performed due too a lack of polymorphic sites")
 		return None
-	#chooses randomly one snp position and saves position-coordinate
-	snp = random.sample(list_positive, 1)[0]
-	print "sampling position", snp
 
-	#creates an alignment with only the extracted position
-	temp_snp_align = edited_alignment[snp]
+	if not args.base_export:
+		#chooses randomly one snp position and saves position-coordinate
+		snp = random.sample(list_positive, 1)[0]
+		print "sampling position", snp
+		#creates an alignment with only the extracted position
+		temp_snp_align = edited_alignment[snp]
+	else:
+		snp_list = list_positive
+		temp_snp_align = edited_alignment[snp_list]
+		
 	#creates dictionary from the extracted snp position
 	seq_dict = temp_snp_align.todict()
+
 	#creates a set from the dictionary, with ordered characters (in order to replace them properly)
 	set_values = list(set(seq_dict.values()))
-	#code the base-letters into 0 or 1
-	if "A" or "C" or "T" or "G" or "a" or "c" or "t" or "g" in set_values:
-		zero = set_values[0]
-		one = set_values[1]
-		snp_dict = {}
-		for name_seq, nucleotide in seq_dict.items():
-			if nucleotide == zero:
-				snp_dict[name_seq] = "0"
-			elif nucleotide == one:
-				snp_dict[name_seq] = "1"
-			else:
-				snp_dict[name_seq] = "?"
+
+	if not args.base_export:
+		#code the base-letters into 0 or 1
+		if "A" or "C" or "T" or "G" or "a" or "c" or "t" or "g" in set_values:
+			zero = set_values[0]
+			one = set_values[1]
+			snp_dict = {}
+			for name_seq, nucleotide in seq_dict.items():
+				if nucleotide == zero:
+					snp_dict[name_seq] = "0"
+				elif nucleotide == one:
+					snp_dict[name_seq] = "1"
+				else:
+					snp_dict[name_seq] = "?"
+	else:
+		snp_dict = seq_dict.copy()
 	return snp_dict
 
 
@@ -239,33 +301,49 @@ def phased_snps_missing(list_var):
 	else:
 		print("no SNP extraction performed due too a lack of polymorphic sites")
 		return None
-	#chooses randomly one snp position and saves position-coordinate
-	snp = random.sample(list_positive, 1)[0]
-	print "sampling position", snp
-	#creates an alignment with only the extracted position
-	temp_snp_align = edited_alignment[snp]
+
+	if not args.base_export:	
+		#chooses randomly one snp position and saves position-coordinate
+		snp = random.sample(list_positive, 1)[0]
+		print "sampling position", snp
+		#creates an alignment with only the extracted position
+		temp_snp_align = edited_alignment[snp]
+
+	else:
+		snp_list = list_positive
+		temp_snp_align = edited_alignment[snp_list]		
+
 	#creates dictionary from the extracted snp position
 	seq_dict = temp_snp_align.todict()
-	#finds elements in the dictionary that belong to the same sample (in case of multiple alleles)
-	clean_names = sorted(find_names(taxa_names))
-	no_duplicates = list(set(clean_names))
-	new_dict = {taxon : [value for key, value in seq_dict.items() if key.startswith(taxon)] for taxon in no_duplicates}
+
+	if not args.base_export:	
+		#finds elements in the dictionary that belong to the same sample (in case of multiple alleles)
+		clean_names = sorted(find_names(taxa_names))
+		no_duplicates = list(set(clean_names))
+		new_dict = {taxon : [value for key, value in seq_dict.items() if key.startswith(taxon)] for taxon in no_duplicates}
+	else:
+		new_dict = seq_dict.copy()		
+
 	#returns which two bases are present in the dictionary (ordered, to replace them properly)
 	set_values = list(set(seq_dict.values()))
-	# Code the base-letters into 0, 1 or 2
-	if "A" or "C" or "T" or "G" or "a" or "c" or "t" or "g" in set_values:
-		zero = set_values[0]
-		two = set_values[1]
-		snp_dict = {}
-		for name_seq, nucleotide in new_dict.items():
-			if nucleotide[0] == nucleotide[1] == zero:
-				snp_dict[name_seq] = "0"
-			elif nucleotide[0] == nucleotide[1] == two:
-				snp_dict[name_seq] = "2"
-			elif nucleotide[0] != nucleotide[1] and nucleotide[0] != "N" and nucleotide[1] != "N":
-				snp_dict[name_seq] = "1"
-			else:
-				snp_dict[name_seq] = "?"
+
+	if not args.base_export:	
+		# Code the base-letters into 0, 1 or 2
+		if "A" or "C" or "T" or "G" or "a" or "c" or "t" or "g" in set_values:
+			zero = set_values[0]
+			two = set_values[1]
+			snp_dict = {}
+			for name_seq, nucleotide in new_dict.items():
+				if nucleotide[0] == nucleotide[1] == zero:
+					snp_dict[name_seq] = "0"
+				elif nucleotide[0] == nucleotide[1] == two:
+					snp_dict[name_seq] = "2"
+				elif nucleotide[0] != nucleotide[1] and nucleotide[0] != "N" and nucleotide[1] != "N":
+					snp_dict[name_seq] = "1"
+				else:
+					snp_dict[name_seq] = "?"
+	else:
+		snp_dict = new_dict.copy()	
 	return snp_dict
 
 
@@ -304,7 +382,10 @@ for fasta in fasta_files[:]:
 	# Apply filter of user-set taxa names to be used for snp-extraction
 	edited_alignment = aln.takeSeqs(sorted(taxa_names))
 	# Get the variable positions for each fasta file
-	var_pos_list = variable_positions(edited_alignment)
+	if not args.missing:
+		var_pos_list = variable_positions(edited_alignment)
+	else:
+		var_pos_list = variable_positions_incl_missing(edited_alignment)
 	print var_pos_list
 	D = ""
 	if not args.phased:
