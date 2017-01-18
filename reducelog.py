@@ -1,4 +1,5 @@
 #written by Tobias Hofmann (tobias.hofmann@bioenv.gu.se)
+
 import os
 import argparse
 import csv
@@ -8,6 +9,7 @@ class CompletePath(argparse.Action):
 	"""give the full path of an input file/folder"""
 	def __call__(self, parser, namespace, values, option_string=None):
 		setattr(namespace, self.dest, os.path.abspath(os.path.expanduser(values)))
+
 
 # Get arguments
 def get_args():
@@ -57,7 +59,6 @@ def reducelog(file,number_of_columns,additional_column_list):
 	workdir = "/".join(infile_path[:-1])
 	infile_stem = infile_path[-1].split(".")[0]
 	outfile = "%s/%s_reducedLog.log" %(workdir,infile_stem)
-	print outfile
 	output = open(outfile, "wb")
 	outlog=csv.writer(output, delimiter='\t')
 	print "Reading mcmc log file. This can take some moments (depending on file-size)..."
@@ -81,9 +82,6 @@ def reducelog(file,number_of_columns,additional_column_list):
 			for element in id_list:
 				out_line.append(line[element])
 			outlog.writerow(out_line)
-
-
-
 
 
 reducelog(input_file,int_cols,list_columns)
