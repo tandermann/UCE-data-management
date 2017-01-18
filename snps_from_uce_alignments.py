@@ -5,6 +5,7 @@
 #_____________________________________________________________________________________
 #%%% Imports %%%
 import os
+import re
 import sys
 import glob
 import shutil
@@ -18,9 +19,9 @@ from Bio.Alphabet import IUPAC, Gapped
 
 # Complete path function
 class CompletePath(argparse.Action):
-    """give the full path of an input file/folder"""
-    def __call__(self, parser, namespace, values, option_string=None):
-        setattr(namespace, self.dest, os.path.abspath(os.path.expanduser(values)))
+	"""give the full path of an input file/folder"""
+	def __call__(self, parser, namespace, values, option_string=None):
+		setattr(namespace, self.dest, os.path.abspath(os.path.expanduser(values)))
 
 # Get arguments
 def get_args():
@@ -37,7 +38,7 @@ def get_args():
 	)
 	parser.add_argument(
 		'--config',
-        required=True,
+		required=True,
 		action=CompletePath,
 		help='A configuration file containing all sequence IDs that you want to extract SNPs for (one sequence ID per line)'
 	)
@@ -57,7 +58,13 @@ def get_args():
 		'--base_export',
 		action='store_true',
 		default=False,
-		help='If you want to extract all variable positions as bases (rather than binary SNPs) from the alignments'
+		help='If you want to extract variable positions as bases (rather than binary SNPs) from the alignments'
+	)
+	parser.add_argument(
+		'--snps',
+		choices=["one", "all"],
+		default="one",
+		help="If 'one', then only one SNP is extracted per locus (recommended for unlinked SNPs e.g. in SNAPP). If 'all', then all variable positions are extracted."
 	)
 	parser.add_argument(
 		'--delimiter',
@@ -81,20 +88,21 @@ work_dir = args.input
 out_dir = args.output
 # Create the output directory
 if not os.path.exists(out_dir):
-    os.makedirs(out_dir)
+	os.makedirs(out_dir)
 config = args.config
 name_file = open (config, 'r')
 taxa_list = name_file.readlines()
 taxa_names = []
 for element in taxa_list:
 	taxa_names.append(element.replace("\n", ""))
+snp_mode = args.snps
 
 print "\n\n"
 print " ____________________________________________________"
 print "|Launching SNP extraction script...                  |"
 print "|                                                    |"
 print "|Written by Tobias Hofmann, inspired by Yann Bertrand|"
-print "|Version 1.1, August 2015                            |"
+print "|Version 1.2, January 2017                           |"
 print "|____________________________________________________|"
 
 if not args.phased:
@@ -119,9 +127,11 @@ def find_names(sequence_names):
 def variable_positions(alignment):
 	var_col = []
 	for x in range(len(alignment)):
+		# this function only extracts SNPs with exactly two states in the data
 		if not args.base_export:
 			if alignment[x].filtered(lambda x: len(set(x)) == 2 and "n" not in x and "N" not in x and "-" not in x):
 				var_col.append(x)
+		# this function allows there to be more than two states for extracted SNPs
 		else:
 			if alignment[x].filtered(lambda x: len(set(x)) > 1 and "n" not in x and "N" not in x and "-" not in x):
 				var_col.append(x)
@@ -131,11 +141,13 @@ def variable_positions(alignment):
 def variable_positions_incl_missing(alignment):
 	var_col = []
 	for x in range(len(alignment)):
+		# this function only extracts SNPs with exactly two states in the data
 		if not args.base_export:
 			if alignment[x].filtered(lambda x: len(set(x)) == 2 and "n" not in x and "N" not in x and "-" not in x):
 				var_col.append(x)
 			elif alignment[x].filtered(lambda x: len(set(x)) == 3 and ("n" in x or "N" in x) and "-" not in x):
 				var_col.append(x)
+		# this function allows there to be more than two states for extracted SNPs
 		else:
 			if alignment[x].filtered(lambda x: len(set(x)) > 1 and "n" not in x and "N" not in x and "-" not in x):
 				var_col.append(x)
@@ -144,57 +156,87 @@ def variable_positions_incl_missing(alignment):
 	return var_col
 
 
-def snps_include_missing():
-	if len(just_variable_aln)>0:
-		just_variable_aln_1 = just_variable_aln # if the above criterium is OK, nothing below happens
-	elif new_aln.filtered(lambda x:  len(set(x)) ==3 and ("n" in x or "N" in x) and "-" not in x):
-		just_variable_aln_1 = new_aln.filtered(lambda x:  len(set(x)) ==3 and ("n" in x or "N" in x) and "-" not in x)
-		print "two alleles and missing", len(just_variable_aln_1)
-	else:
-		return None  #if the gene contains no snps or only snps in combination with "-", nothing will be extracted
-	# select one random column ID (position number)
-	snp = random.sample(range(len(just_variable_aln_1)), 1)
-	print "sampling position",snp
-	# creates alignment just with one randomly selected SNP
-	S = just_variable_aln_1[snp]
-
-
 def unphased_snps(list_var):
+
 	if len(list_var)>0:
 		list_positive = list_var
 	else:
 		print("no snp extraction performed due too a lack of polymorphic sites")
 		return None
 
-	if not args.base_export:	
+	if snp_mode == 'one':
 		#chooses randomly one snp position and saves position-coordinate
 		snp = random.sample(list_positive, 1)[0]
 		print "sampling position", snp
 		#creates an alignment with only the extracted position
 		temp_snp_align = edited_alignment[snp]
-	else:
+	elif snp_mode == 'all':
 		snp_list = list_positive
-		temp_snp_align = edited_alignment[snp_list]	
-
+		print "sampling positions", snp_list
+		temp_snp_align = edited_alignment[snp_list]
+		
 	#creates dictionary from the extracted snp position
 	seq_dict = temp_snp_align.todict()
+	new_dict = seq_dict.copy()	
 
-	#creates a set from the dictionary, with ordered characters (in order to replace them properly)
-	set_values = list(set(seq_dict.values()))
 
-	if not args.base_export:	
-		#code the base-letters into 0 or 1
-		if "A" or "C" or "T" or "G" or "a" or "c" or "t" or "g" in set_values:
-			zero = set_values[0]
-			one = set_values[1]
+	if not args.base_export:
+		if snp_mode == 'one':
+			set_values = []
+			list_chars = list(seq_dict.values())
+			for entry in set(list_chars):
+				if not entry in ['N','n']:
+					set_values.append((entry, list_chars.count(entry)))
+			set_values.sort(key = lambda x: -x[1])
 			snp_dict = {}
-			for name_seq, nucleotide in seq_dict.items():
-				if nucleotide == zero:
-					snp_dict[name_seq] = "0"
-				else:
-					snp_dict[name_seq] = "1"
+			# Code the base-letters into 0 and 1
+			if "A" or "C" or "T" or "G" or "a" or "c" or "t" or "g" in set_values:
+				original = set_values[0][0]
+				derived = set_values[1][0]
+				snp_dict = {}
+				for name_seq, nucleotide in seq_dict.items():
+					if nucleotide == original:
+						snp_dict[name_seq] = "0"
+					elif nucleotide == derived:
+						snp_dict[name_seq] = "1"
+					else:
+						print "Programming error: There are ambiguities in the final SNP dict, even though it should only contain SNPs without ambiguities. Either choose --missing flag to also include SNPs with missing data or contact programmer of this script (tobias.hofmann@bioenv.gu.se)"
+		elif snp_mode == 'all':
+			temp_dict = {}
+			for entry in new_dict:
+				temp_dict.setdefault(entry,list(new_dict[entry]))
+			name = random.choice(seq_dict.keys())
+			positions = range(len(list(seq_dict[name])))
+			snp_dict = {}
+			for pos in positions:
+				# a list of all values from this position accross all samples 
+				list_chars = []
+				for name_seq, nucleotide in temp_dict.items():
+					nucleotide_0 = nucleotide[pos]
+					nucleotide_1 = nucleotide[pos]
+					list_chars.append(nucleotide_0)
+					list_chars.append(nucleotide_1)
+				set_values = []
+				for entry in set(list_chars):
+					if not entry in ['N','n']:
+						set_values.append((entry, list_chars.count(entry)))
+				set_values.sort(key = lambda x: -x[1])
+
+				if "A" or "C" or "T" or "G" or "a" or "c" or "t" or "g" in set_values:
+					original = set_values[0][0]
+					derived = set_values[1][0]
+					for name_seq, nucleotide in temp_dict.items():
+						nucleotide_pos = nucleotide[pos]
+						if nucleotide_pos == original:
+							snp_value = "0"
+						elif nucleotide_pos == derived:
+							snp_value = "1"
+						else:
+							print "Programming error: There are ambiguities in the final SNP dict, even though it should only contain SNPs without ambiguities. Either choose --missing flag to also include SNPs with missing data or contact programmer of this script (tobias.hofmann@bioenv.gu.se)"
+						snp_dict.setdefault(name_seq,[])
+						snp_dict[name_seq].append(snp_value)
 	else:
-		snp_dict = seq_dict.copy()	
+		snp_dict = seq_dict.copy()
 	return snp_dict
 
 
@@ -204,45 +246,103 @@ def phased_snps(list_var):
 	else:
 		print("no SNP extraction performed due too a lack of polymorphic sites")
 		return None
-	
-	
-	if not args.base_export:
+
+	if snp_mode == 'one':
 		#chooses randomly one snp position and saves position-coordinate
 		snp = random.sample(list_positive, 1)[0]
 		print "sampling position", snp
 		#creates an alignment with only the extracted position
 		temp_snp_align = edited_alignment[snp]
-	else:
+	elif snp_mode == 'all':
 		snp_list = list_positive
-		temp_snp_align = edited_alignment[snp_list]
+		print "sampling positions", snp_list
+		temp_snp_align = edited_alignment[snp_list]		
 
 	#creates dictionary from the extracted snp position
 	seq_dict = temp_snp_align.todict()
-	
-	if not args.base_export:
+
+	if not args.base_export:	
 		#finds elements in the dictionary that belong to the same sample (in case of multiple alleles)
 		clean_names = sorted(find_names(taxa_names))
 		no_duplicates = list(set(clean_names))
 		new_dict = {taxon : [value for key, value in seq_dict.items() if key.startswith(taxon)] for taxon in no_duplicates}
 	else:
-		new_dict = seq_dict.copy()
+		new_dict = seq_dict.copy()		
 
-	#returns which bases are present in the dictionary (ordered, to replace them properly)
-	set_values = list(set(seq_dict.values()))
+
 
 	if not args.base_export:
-		# Code the base-letters into 0, 1 or 2
-		if "A" or "C" or "T" or "G" or "a" or "c" or "t" or "g" in set_values:
-			zero = set_values[0]
-			two = set_values[1]
+		if snp_mode == 'one':
+			#returns which two bases are present in the dictionary (ordered, to replace them properly)
+			set_values = []
+			list_chars = list(seq_dict.values())
+			for entry in set(list_chars):
+				if not entry in ['N','n']:
+					set_values.append((entry, list_chars.count(entry)))
+			set_values.sort(key = lambda x: -x[1])
 			snp_dict = {}
-			for name_seq, nucleotide in new_dict.items():
-				if nucleotide[0] == nucleotide[1] == zero:
-					snp_dict[name_seq] = "0"
-				elif nucleotide[0] == nucleotide[1] == two:
-					snp_dict[name_seq] = "2"
-				elif nucleotide[0] != nucleotide[1]:
-					snp_dict[name_seq] = "1"
+			# Code the base-letters into 0, 1 or 2
+			if "A" or "C" or "T" or "G" or "a" or "c" or "t" or "g" in set_values:
+				original = set_values[0][0]
+				derived = set_values[1][0]
+				for name_seq, nucleotide in new_dict.items():
+					if nucleotide[0] == nucleotide[1] == original:
+						snp_dict[name_seq] = "0"
+					elif nucleotide[0] == nucleotide[1] == derived:
+						snp_dict[name_seq] = "2"
+					elif nucleotide[0] != nucleotide[1] and nucleotide[0] != "N" and nucleotide[1] != "N":
+						snp_dict[name_seq] = "1"
+					else:
+						print "Programming error: There are ambiguities in the final SNP dict, even though it should only contain SNPs without ambiguities. Either choose --missing flag to also include SNPs with missing data or contact programmer of this script (tobias.hofmann@bioenv.gu.se)"
+
+
+		elif snp_mode == 'all':
+			temp_dict = {}
+			for entry in new_dict:
+				temp_dict.setdefault(entry,list(new_dict[entry]))
+			name = random.choice(seq_dict.keys())
+			positions = range(len(list(seq_dict[name])))
+			snp_dict = {}
+			for pos in positions:
+				# a list of all values from this position accross all samples 
+				list_chars = []
+				for name_seq, nucleotide in temp_dict.items():
+						list_bases = []
+						for element in nucleotide:
+							list_bases.append(list(element))
+						nucleotide_0 = list_bases[0][pos]
+						nucleotide_1 = list_bases[1][pos]
+						list_chars.append(nucleotide_0)
+						list_chars.append(nucleotide_1)
+				set_values = []
+				for entry in set(list_chars):
+					if not entry in ['N','n']:
+						set_values.append((entry, list_chars.count(entry)))
+				set_values.sort(key = lambda x: -x[1])
+				
+				# Code the base-letters into 0, 1 or 2
+				if "A" or "C" or "T" or "G" or "a" or "c" or "t" or "g" in set_values:
+					original = set_values[0][0]
+					derived = set_values[1][0]
+					for name_seq, nucleotide in temp_dict.items():
+						# make a list with all SNPs of the sample for the locus
+						list_bases = []
+						for element in nucleotide:
+							list_bases.append(list(element))
+						nucleotide_0 = list_bases[0][pos]
+						nucleotide_1 = list_bases[1][pos]
+						snp_value = ""
+						if nucleotide_0 == nucleotide_1 == original:
+							snp_value = "0"
+						elif nucleotide_0 == nucleotide_1 == derived:
+							snp_value = "2"
+						elif nucleotide_0 != nucleotide_1 and nucleotide_0 != "N" and nucleotide_1 != "N":
+							snp_value = "1"
+						else:
+							print "Programming error: There are ambiguities in the final SNP dict, even though it should only contain SNPs without ambiguities. Either choose --missing flag to also include SNPs with missing data or contact programmer of this script (tobias.hofmann@bioenv.gu.se)"
+						
+						snp_dict.setdefault(name_seq,[])
+						snp_dict[name_seq].append(snp_value)
 	else:
 		snp_dict = new_dict.copy()
 	return snp_dict
@@ -258,35 +358,79 @@ def unphased_snps_missing(list_var):
 		print("no snp extraction performed due too a lack of polymorphic sites")
 		return None
 
-	if not args.base_export:
+	if snp_mode == 'one':
 		#chooses randomly one snp position and saves position-coordinate
 		snp = random.sample(list_positive, 1)[0]
 		print "sampling position", snp
 		#creates an alignment with only the extracted position
 		temp_snp_align = edited_alignment[snp]
-	else:
+	elif snp_mode == 'all':
 		snp_list = list_positive
+		print "sampling positions", snp_list
 		temp_snp_align = edited_alignment[snp_list]
 		
 	#creates dictionary from the extracted snp position
 	seq_dict = temp_snp_align.todict()
+	new_dict = seq_dict.copy()	
 
-	#creates a set from the dictionary, with ordered characters (in order to replace them properly)
-	set_values = list(set(seq_dict.values()))
 
 	if not args.base_export:
-		#code the base-letters into 0 or 1
-		if "A" or "C" or "T" or "G" or "a" or "c" or "t" or "g" in set_values:
-			zero = set_values[0]
-			one = set_values[1]
+		if snp_mode == 'one':
+			set_values = []
+			list_chars = list(seq_dict.values())
+			for entry in set(list_chars):
+				if not entry in ['N','n']:
+					set_values.append((entry, list_chars.count(entry)))
+			set_values.sort(key = lambda x: -x[1])
 			snp_dict = {}
-			for name_seq, nucleotide in seq_dict.items():
-				if nucleotide == zero:
-					snp_dict[name_seq] = "0"
-				elif nucleotide == one:
-					snp_dict[name_seq] = "1"
-				else:
-					snp_dict[name_seq] = "?"
+			# Code the base-letters into 0 and 1
+			if "A" or "C" or "T" or "G" or "a" or "c" or "t" or "g" in set_values:
+				original = set_values[0][0]
+				derived = set_values[1][0]
+				snp_dict = {}
+				for name_seq, nucleotide in seq_dict.items():
+					if nucleotide == original:
+						snp_dict[name_seq] = "0"
+					elif nucleotide == derived:
+						snp_dict[name_seq] = "1"
+					else:
+						snp_dict[name_seq] = "?"
+		elif snp_mode == 'all':
+			temp_dict = {}
+			for entry in new_dict:
+				temp_dict.setdefault(entry,list(new_dict[entry]))
+			name = random.choice(seq_dict.keys())
+			positions = range(len(list(seq_dict[name])))
+			snp_dict = {}
+			for pos in positions:
+				# a list of all values from this position accross all samples 
+				list_chars = []
+				for name_seq, nucleotide in temp_dict.items():
+					nucleotide_0 = nucleotide[pos]
+					nucleotide_1 = nucleotide[pos]
+					list_chars.append(nucleotide_0)
+					list_chars.append(nucleotide_1)
+				set_values = []
+				for entry in set(list_chars):
+					if not entry in ['N','n']:
+						set_values.append((entry, list_chars.count(entry)))
+				set_values.sort(key = lambda x: -x[1])
+
+				if "A" or "C" or "T" or "G" or "a" or "c" or "t" or "g" in set_values:
+					original = set_values[0][0]
+					derived = set_values[1][0]
+					for name_seq, nucleotide in temp_dict.items():
+						nucleotide_pos = nucleotide[pos]
+						snp_value = ""
+						if nucleotide_pos == original:
+							snp_value = "0"
+						elif nucleotide_pos == derived:
+							snp_value = "1"
+						else:
+							snp_value = "?"
+						snp_dict.setdefault(name_seq,[])
+						snp_dict[name_seq].append(snp_value)
+
 	else:
 		snp_dict = seq_dict.copy()
 	return snp_dict
@@ -302,15 +446,15 @@ def phased_snps_missing(list_var):
 		print("no SNP extraction performed due too a lack of polymorphic sites")
 		return None
 
-	if not args.base_export:	
+	if snp_mode == 'one':
 		#chooses randomly one snp position and saves position-coordinate
 		snp = random.sample(list_positive, 1)[0]
 		print "sampling position", snp
 		#creates an alignment with only the extracted position
 		temp_snp_align = edited_alignment[snp]
-
-	else:
+	elif snp_mode == 'all':
 		snp_list = list_positive
+		print "sampling positions", snp_list
 		temp_snp_align = edited_alignment[snp_list]		
 
 	#creates dictionary from the extracted snp position
@@ -324,26 +468,81 @@ def phased_snps_missing(list_var):
 	else:
 		new_dict = seq_dict.copy()		
 
-	#returns which two bases are present in the dictionary (ordered, to replace them properly)
-	set_values = list(set(seq_dict.values()))
 
-	if not args.base_export:	
-		# Code the base-letters into 0, 1 or 2
-		if "A" or "C" or "T" or "G" or "a" or "c" or "t" or "g" in set_values:
-			zero = set_values[0]
-			two = set_values[1]
+
+	if not args.base_export:
+		if snp_mode == 'one':
+			#returns which two bases are present in the dictionary (ordered, to replace them properly)
+			set_values = []
+			list_chars = list(seq_dict.values())
+			for entry in set(list_chars):
+				if not entry in ['N','n']:
+					set_values.append((entry, list_chars.count(entry)))
+			set_values.sort(key = lambda x: -x[1])
 			snp_dict = {}
-			for name_seq, nucleotide in new_dict.items():
-				if nucleotide[0] == nucleotide[1] == zero:
-					snp_dict[name_seq] = "0"
-				elif nucleotide[0] == nucleotide[1] == two:
-					snp_dict[name_seq] = "2"
-				elif nucleotide[0] != nucleotide[1] and nucleotide[0] != "N" and nucleotide[1] != "N":
-					snp_dict[name_seq] = "1"
-				else:
-					snp_dict[name_seq] = "?"
+			# Code the base-letters into 0, 1 or 2
+			if "A" or "C" or "T" or "G" or "a" or "c" or "t" or "g" in set_values:
+				original = set_values[0][0]
+				derived = set_values[1][0]
+				for name_seq, nucleotide in new_dict.items():
+					if nucleotide[0] == nucleotide[1] == original:
+						snp_dict[name_seq] = "0"
+					elif nucleotide[0] == nucleotide[1] == derived:
+						snp_dict[name_seq] = "2"
+					elif nucleotide[0] != nucleotide[1] and nucleotide[0] != "N" and nucleotide[1] != "N":
+						snp_dict[name_seq] = "1"
+					else:
+						snp_dict[name_seq] = "?"
+
+		elif snp_mode == 'all':
+			temp_dict = {}
+			for entry in new_dict:
+				temp_dict.setdefault(entry,list(new_dict[entry]))
+			name = random.choice(seq_dict.keys())
+			positions = range(len(list(seq_dict[name])))
+			snp_dict = {}
+			for pos in positions:
+				# a list of all values from this position accross all samples 
+				list_chars = []
+				for name_seq, nucleotide in temp_dict.items():
+						list_bases = []
+						for element in nucleotide:
+							list_bases.append(list(element))
+						nucleotide_0 = list_bases[0][pos]
+						nucleotide_1 = list_bases[1][pos]
+						list_chars.append(nucleotide_0)
+						list_chars.append(nucleotide_1)
+				set_values = []
+				for entry in set(list_chars):
+					if not entry in ['N','n']:
+						set_values.append((entry, list_chars.count(entry)))
+				set_values.sort(key = lambda x: -x[1])
+				
+				# Code the base-letters into 0, 1 or 2
+				if "A" or "C" or "T" or "G" or "a" or "c" or "t" or "g" in set_values:
+					original = set_values[0][0]
+					derived = set_values[1][0]
+					for name_seq, nucleotide in temp_dict.items():
+						# make a list with all SNPs of the sample for the locus
+						list_bases = []
+						for element in nucleotide:
+							list_bases.append(list(element))
+						nucleotide_0 = list_bases[0][pos]
+						nucleotide_1 = list_bases[1][pos]
+						snp_value = ""
+						if nucleotide_0 == nucleotide_1 == original:
+							snp_value = "0"
+						elif nucleotide_0 == nucleotide_1 == derived:
+							snp_value = "2"
+						elif nucleotide_0 != nucleotide_1 and nucleotide_0 != "N" and nucleotide_1 != "N":
+							snp_value = "1"
+						else:
+							snp_value = "?"
+						
+						snp_dict.setdefault(name_seq,[])
+						snp_dict[name_seq].append(snp_value)
 	else:
-		snp_dict = new_dict.copy()	
+		snp_dict = new_dict.copy()
 	return snp_dict
 
 
@@ -408,8 +607,13 @@ for fasta in fasta_files[:]:
 
 #join all snps into one dictionary
 final_snp_alignment = {}
-for key, value in final_dict.items():
-	final_snp_alignment[key] = "".join(value)
+if snp_mode == 'one':
+	for key, value in final_dict.items():
+		final_snp_alignment[key] = "".join(value)
+elif snp_mode == 'all':
+	for key, values in final_dict.items():
+		value = sum(values, [])
+		final_snp_alignment[key] = "".join(value)
 
 # Create the output file in output directory
 output_file_fasta = os.path.join(out_dir,'snp.fasta')
