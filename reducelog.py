@@ -47,7 +47,6 @@ if type(columns) == str:
 	list_columns = columns.split(',')
 else:
 	list_columns = []
-print list_columns
 
 def exclude_commented_lines(file_content):
 	content = []
