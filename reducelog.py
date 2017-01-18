@@ -43,8 +43,11 @@ args = get_args()
 input_file = args.mcmclog
 int_cols = args.first_x
 columns = args.column_names
-list_columns = columns.split(',')
-
+if type(columns) == str:
+	list_columns = columns.split(',')
+else:
+	list_columns = []
+print list_columns
 
 def exclude_commented_lines(file_content):
 	content = []
