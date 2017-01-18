@@ -1,3 +1,4 @@
+#written by Tobias Hofmann (tobias.hofmann@bioenv.gu.se)
 import os
 import argparse
 import csv
@@ -7,7 +8,6 @@ class CompletePath(argparse.Action):
 	"""give the full path of an input file/folder"""
 	def __call__(self, parser, namespace, values, option_string=None):
 		setattr(namespace, self.dest, os.path.abspath(os.path.expanduser(values)))
-
 
 # Get arguments
 def get_args():
@@ -52,7 +52,7 @@ def exclude_commented_lines(file_content):
 			content.append(line)
 	return content
 
-def reducelog(file,number_of_columns,additional_column_list): #written by Tobias Hofmann (tobias.hofmann@bioenv.gu.se)
+def reducelog(file,number_of_columns,additional_column_list):
 	infile_path = file.split("/")
 	workdir = "/".join(infile_path[:-1])
 	infile_stem = infile_path[-1].split(".")[0]
