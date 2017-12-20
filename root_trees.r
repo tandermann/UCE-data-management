@@ -1,6 +1,9 @@
 library(ape)
 library(optparse)
 
+install.packages('optparse')
+install.packages(ape)
+
 ################ Setting up parser for user input######
 option_list <- list(
   make_option(c("-o", "--outgroup"), type="character", default=FALSE,
